@@ -13,7 +13,7 @@ from dash import dcc, html
 # ---------------------------
 # Configs
 # ---------------------------
-CSV_PATH = "data/reviews.csv"
+CSV_PATH = "reviews.csv"
 EXTERNAL_STYLESHEETS = [
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
 ]
@@ -425,3 +425,4 @@ app.layout = html.Div([
 
 if __name__ == "__main__":
     app.run(debug=True, port=8050)
+
