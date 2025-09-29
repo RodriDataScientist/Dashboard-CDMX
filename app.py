@@ -13,7 +13,7 @@ from dash import dcc, html
 # ---------------------------
 # Configs
 # ---------------------------
-CSV_PATH = "reviews.csv"
+CSV_PATH = "data/reviews.csv"
 EXTERNAL_STYLESHEETS = [
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
 ]
@@ -371,6 +371,11 @@ En conjunto, las reseñas resaltan a la CDMX como un destino cultural, familiar 
 # ---------------------------
 # Dash App layout (mejoras en texto explicativo)
 # ---------------------------
+from dash.dependencies import Input, Output
+
+# ==========================
+# Layout principal
+# ==========================
 app = dash.Dash(__name__, external_stylesheets=EXTERNAL_STYLESHEETS)
 app.title = "Dashboard CDMX - Reseñas"
 
@@ -383,7 +388,64 @@ app.layout = html.Div([
         html.H2("01/08/2010 - 01/09/2025", className="h4"),
     ], className="text-center my-3"),
 
+    # Selector interactivo para N
     html.Div([
+        html.Label("Número de lugares a mostrar (Top/Bottom)", className="fw-bold"),
+        dcc.Slider(
+            id="n-slider",
+            min=1, max=25, step=1, value=12,
+            marks={i: str(i) for i in range(1, 26)},
+            tooltip={"placement": "bottom", "always_visible": True}
+        )
+    ], className="m-4"),
+
+    html.Div(id="cards-container", className="d-flex justify-content-center flex-wrap"),
+
+    html.Hr(),
+
+    html.Div([
+        html.H4("Distribución de Sentimientos", className="text-center text-muted"),
+        html.Div([
+            html.Div([dcc.Graph(id="fig-top")], className="col-md-6 p-2"),
+            html.Div([dcc.Graph(id="fig-bottom")], className="col-md-6 p-2"),
+        ], className="row")
+    ]),
+
+    html.Hr(),
+
+    html.Div([
+        html.Div([dcc.Graph(id="fig-treemap")], className="col-md-6 p-2"),
+        html.Div([
+            html.Div([
+                dcc.Markdown(SUMMARY_MD, dangerously_allow_html=True),
+            ], className="card p-3", style={"maxHeight": "520px", "overflow": "auto", "textAlign": "left"})
+        ], className="col-md-6 p-2"),
+    ], className="row"),
+
+    html.Footer(html.Div("Dashboard generado con datos de reseñas en TripAdvisor — CDMX", 
+                         className="text-center mt-2 mb-4 text-muted"))
+], className="container-fluid")
+
+
+# ==========================
+# Callbacks dinámicos
+# ==========================
+@app.callback(
+    [Output("cards-container", "children"),
+     Output("fig-top", "figure"),
+     Output("fig-bottom", "figure"),
+     Output("fig-treemap", "figure")],
+    [Input("n-slider", "value")]
+)
+def update_dashboard(N):
+    # recalcular top, bottom, focus
+    top = agg.head(N)
+    resto = agg[~agg["lugar"].isin(top["lugar"])]
+    bottom = resto.sort_values("pos_ratio").head(N)
+    focus = pd.concat([top, bottom], ignore_index=True)
+
+    # Tarjetas resumen
+    cards = [
         html.Div([
             html.H6("Total de reseñas analizadas", className="text-muted"),
             html.H3(f"{total_reviews:,}"),
@@ -398,34 +460,87 @@ app.layout = html.Div([
             html.H6("Lugares en foco (Top / Bottom)", className="text-muted"),
             html.H3(f"{len(focus):,}")
         ], className="card p-3 m-2 text-center", style={"width": "260px"}),
-    ], className="d-flex justify-content-center flex-wrap"),
+    ]
 
-    html.Hr(),
+    # ==========================
+    # Figuras
+    # ==========================
+    # Sentimiento Top
+    sent_top = top.melt(
+        id_vars=["lugar"],
+        value_vars=["pos", "neu", "neg"],
+        var_name="sentiment",
+        value_name="count"
+    ).replace({"pos": "Positivas", "neu": "Neutrales", "neg": "Negativas"})
 
-    html.Div([
-        html.H4("Distribución de Sentimientos", className="text-center text-muted"),
-        html.Div([
-            html.Div([dcc.Graph(figure=fig_sentiment_top)], className="col-md-6 p-2"),
-            html.Div([dcc.Graph(figure=fig_sentiment_bottom)], className="col-md-6 p-2"),
-        ], className="row")
-    ]),
+    fig_sentiment_top = px.bar(
+        sent_top,
+        x="count", y="lugar",
+        color="sentiment",
+        orientation="h",
+        title=f"{N} Lugares Mejor Evaluados",
+        color_discrete_map=color_map_sent,
+        barmode="stack",
+        text="count"
+    )
+    fig_sentiment_top.update_traces(texttemplate="%{text}", textposition="inside")
 
-    html.Hr(),
+    # Sentimiento Bottom
+    sent_bottom = bottom.melt(
+        id_vars=["lugar"],
+        value_vars=["pos", "neu", "neg"],
+        var_name="sentiment",
+        value_name="count"
+    ).replace({"pos": "Positivas", "neu": "Neutrales", "neg": "Negativas"})
 
-    html.Div([
-        html.Div([dcc.Graph(figure=fig_treemap)], className="col-md-6 p-2"),
-        html.Div([
-            html.Div([
-                dcc.Markdown(SUMMARY_MD, dangerously_allow_html=True),
-            ], className="card p-3", style={"maxHeight": "520px", "overflow": "auto", "textAlign": "left"})
-        ], className="col-md-6 p-2"),
-    ], className="row"),
-    html.Footer(html.Div("Dashboard generado con datos de reseñas en TripAdvisor — CDMX", className="text-center mt-2 mb-4 text-muted"))
-], className="container-fluid")
+    fig_sentiment_bottom = px.bar(
+        sent_bottom,
+        x="count", y="lugar",
+        color="sentiment",
+        orientation="h",
+        title=f"{N} Lugares Peor Evaluados",
+        color_discrete_map=color_map_sent,
+        barmode="stack",
+        text="count"
+    )
+    fig_sentiment_bottom.update_traces(texttemplate="%{text}", textposition="inside")
+
+    # Treemap (si aplica)
+    if df["topic"].notna().any():
+        tmp = df[df["lugar"].isin(focus["lugar"])]
+        treemap_df = tmp.groupby("topic").size().reset_index(name="mentions")
+        treemap_df = treemap_df[treemap_df["mentions"] >= MIN_TOPIC_MENTIONS].reset_index(drop=True)
+
+        if not treemap_df.empty:
+            treemap_df = treemap_df.apply(lambda row: pd.Series({
+                "topic_id": str(row["topic"]).strip(),
+                "label": short_label(str(row["topic"]).strip()),
+                "description": topic_descriptions.get(str(row["topic"]).strip(), ""),
+                "mentions": int(row["mentions"])
+            }), axis=1)
+
+            fig_treemap = px.treemap(
+                treemap_df,
+                path=[px.Constant(""), "label"],
+                values="mentions",
+                hover_data=["description"],
+                title="Tópicos mencionados en los lugares de interés (foco)",
+                template="plotly_white"
+            )
+            fig_treemap.update_traces(
+                textinfo="label+value",
+                textfont=dict(size=14),
+                hovertemplate="<b>%{label}</b><br>Menciones: %{value}<br>%{customdata[0]}<extra></extra>",
+                root_color="lightgrey"
+            )
+        else:
+            fig_treemap = px.imshow([[0]])
+            fig_treemap.update_layout(title="No hay suficientes menciones por tópico")
+    else:
+        fig_treemap = px.imshow([[0]])
+        fig_treemap.update_layout(title="No hay tópicos en los datos")
+
+    return cards, fig_sentiment_top, fig_sentiment_bottom, fig_treemap
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-
-
-
