@@ -18,7 +18,7 @@ EXTERNAL_STYLESHEETS = [
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
 ]
 
-N = 10 # top N / bottom N lugares a mostrar en el foco
+N = 12 # top N / bottom N lugares a mostrar en el foco
 MIN_TOPIC_MENTIONS = 40  # umbral mín. para mostrar tópico en treemap
 PALETTE = px.colors.sequential.Viridis  # paleta única y agradable
 
@@ -425,6 +425,7 @@ app.layout = html.Div([
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
