@@ -393,8 +393,8 @@ app.layout = html.Div([
         html.Label("Número de lugares a mostrar (Top/Bottom)", className="fw-bold"),
         dcc.Slider(
             id="n-slider",
-            min=1, max=25, step=1, value=12,
-            marks={i: str(i) for i in range(1, 26)},
+            min=1, max=15, step=1, value=5,
+            marks={i: str(i) for i in range(1, 16)},
             tooltip={"placement": "bottom", "always_visible": True}
         )
     ], className="m-4"),
@@ -544,4 +544,5 @@ def update_dashboard(N):
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
